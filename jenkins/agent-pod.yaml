@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jenkins-agent
+  namespace: jenkins
+  labels:
+    jenkins: agent
+spec:
+  containers:
+    # Jenkins 에이전트 컨테이너
+    - name: jnlp
+      image: jenkins/inbound-agent:latest
+      args:
+        - "${computer.jnlpmac}"
+        - "${computer.name}"
+      env:
+        - name: JENKINS_URL
+          value: "http://<jenkins-master-url>" # Jenkins Master URL
+        - name: JENKINS_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: jenkins-agent-secret
+              key: jenkins-agent-token
+      resources:
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
+        requests:
+          memory: "256Mi"
+          cpu: "200m"
+    # Docker 컨테이너
+    - name: docker
+      image: docker:20.10.8
+      command:
+        - sleep
+        - "infinity"
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+    # Kubernetes CLI (kubectl) 컨테이너
+    - name: kubectl
+      image: bitnami/kubectl:latest
+      command:
+        - sleep
+        - "infinity"
+  volumes:
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock

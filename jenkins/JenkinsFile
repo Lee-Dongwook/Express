@@ -1,0 +1,96 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE_API = "my-api-image:latest"
+        DOCKER_IMAGE_UI = "my-ui-image:latest"
+        KUBE_NAMESPACE = "my-cicd-namespace"
+    }
+
+    stages {
+        // 1. Git Checkout
+        stage('Checkout') {
+            steps {
+                echo 'Checking out code ...'
+                checkout scm 
+            }
+        }
+         // 2. Build Docker Images
+        stage('Build') {
+            parallel {
+                stage('Build API Image') {
+                    steps {
+                        echo 'Building API Docker image...'
+                        sh """
+                        docker build -t $DOCKER_IMAGE_API -f packages/api/Dockerfile packages/api
+                        """
+                    }
+                }
+                stage('Build UI Image') {
+                    steps {
+                        echo 'Building UI Docker image...'
+                        sh """
+                        docker build -t $DOCKER_IMAGE_UI -f packages/ui/Dockerfile packages/ui
+                        """
+                    }
+                }
+            }
+        }
+        // 3. Push Docker Images (Optional)
+        stage('Push Images') {
+            steps {
+                echo 'Pushing Docker images to registry...'
+                // Docker Hub 또는 다른 레지스트리에 푸시
+                sh """
+                docker tag $DOCKER_IMAGE_API <docker_registry>/$DOCKER_IMAGE_API
+                docker push <docker_registry>/$DOCKER_IMAGE_API
+                docker tag $DOCKER_IMAGE_UI <docker_registry>/$DOCKER_IMAGE_UI
+                docker push <docker_registry>/$DOCKER_IMAGE_UI
+                """
+            }
+        }
+         // 4. Run Tests
+        stage('Test') {
+            parallel {
+                stage('API Tests') {
+                    steps {
+                        echo 'Running API tests...'
+                        sh "cd packages/api && npm test"
+                    }
+                }
+                stage('UI Tests') {
+                    steps {
+                        echo 'Running UI tests...'
+                        sh "cd packages/ui && npm test"
+                    }
+                }
+            }
+        }
+        // 5. Deploy to Kubernetes
+        stage('Deploy') {
+            steps {
+                echo 'Deploying to Kubernetes...'
+                sh """
+                kubectl apply -f kubernetes/namespace.yaml
+                kubectl apply -f kubernetes/api/deployment.yaml
+                kubectl apply -f kubernetes/api/service.yaml
+                kubectl apply -f kubernetes/ui/deployment.yaml
+                kubectl apply -f kubernetes/ui/service.yaml
+                kubectl apply -f kubernetes/ui/ingress.yaml
+                """
+            }
+        }
+    }
+     post {
+        always {
+            echo 'Cleaning up workspace...'
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline succeeded!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+}
